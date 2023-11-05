@@ -1,0 +1,14 @@
+version: '3.1'
+
+services:
+  postgresdb:
+    image: postgres:11
+    container_name: gurukulams_event
+    environment:
+      POSTGRES_DB: gurukulams_event
+      POSTGRES_USER: tom
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${PWD}/src/main/resources/db/upgrades:/docker-entrypoint-initdb.d

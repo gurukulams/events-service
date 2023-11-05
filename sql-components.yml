@@ -1,0 +1,21 @@
+# Connection Details
+name: "Event"
+url: "jdbc:postgresql://localhost:5432/gurukulams_event"
+userName: "tom"
+password: "password"
+schemaName: "gurukulams_event"
+
+# Mapping Logic
+rootPackage: "com.gurukulams.event"
+
+wordsMap:
+  events: event
+
+insertMap:
+  CREATED_DATE: CURRENT_TIMESTAMP
+  MODIFIED_DATE:
+  MODIFIED_BY:
+updateMap:
+  MODIFIED_DATE: CURRENT_TIMESTAMP
+  CREATED_DATE:
+  CREATED_BY:
