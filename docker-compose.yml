@@ -11,4 +11,4 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ${PWD}/src/main/resources/db/upgrades:/docker-entrypoint-initdb.d
+      - ${PWD}/src/main/resources/db/db_upgrades:/docker-entrypoint-initdb.d

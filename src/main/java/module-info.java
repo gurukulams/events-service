@@ -7,7 +7,7 @@ module gurukulams.event {
     requires com.h2database;
 
     opens com.gurukulams.event.service;
-    opens db.upgrades;
+    opens db.db_upgrades;
 
     exports com.gurukulams.event.service;
     exports com.gurukulams.event.model;
