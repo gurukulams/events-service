@@ -125,11 +125,12 @@ public class EventService {
 
     /**
      * Create event.
-     * @param categories  the categories
-     * @param tags the tags
-     * @param userName the username
-     * @param locale   the locale
-     * @param event the event
+     *
+     * @param categories the categories
+     * @param tags       the tags
+     * @param userName   the username
+     * @param locale     the locale
+     * @param event      the event
      * @return the event
      */
     public Event create(final List<String> categories,
@@ -163,9 +164,9 @@ public class EventService {
     }
 
 
-
     /**
      * Creates Localized Event.
+     *
      * @param eventId
      * @param event
      * @param locale
@@ -175,7 +176,7 @@ public class EventService {
     private int createLocalized(final UUID eventId,
                                 final Locale locale,
                                 final Event event)
-                                    throws SQLException {
+            throws SQLException {
         EventLocalized localized = new EventLocalized();
         localized.setEventId(eventId);
         localized.setLocale(locale.getLanguage());
@@ -195,8 +196,8 @@ public class EventService {
      * @return the optional
      */
     public Optional<Event> read(final String userName,
-                                   final UUID id,
-                                   final Locale locale)
+                                final UUID id,
+                                final Locale locale)
             throws SQLException {
         Optional<Event> optionalEvent = (locale == null)
                 ? this.eventStore.select(id)
@@ -219,13 +220,13 @@ public class EventService {
      * @param id       the id
      * @param userName the username
      * @param locale   the locale
-     * @param event the event
+     * @param event    the event
      * @return the event
      */
     public Event update(final UUID id,
-                           final String userName,
-                           final Locale locale,
-                           final Event event) throws SQLException {
+                        final String userName,
+                        final Locale locale,
+                        final Event event) throws SQLException {
 
         Set<ConstraintViolation<Event>> violations =
                 isValidEvent(event);
@@ -242,9 +243,9 @@ public class EventService {
         if (locale == null) {
             updatedRows = this.eventStore.update()
                     .set(title(event.getTitle()),
-                    description(event.getDescription()),
-                    eventDate(event.getEventDate()),
-                    modifiedBy(userName))
+                            description(event.getDescription()),
+                            eventDate(event.getEventDate()),
+                            modifiedBy(userName))
                     .where(id().eq(id).and()
                             .createdBy().eq(userName)).execute();
         } else {
@@ -256,11 +257,12 @@ public class EventService {
                     .execute();
             if (updatedRows != 0) {
                 updatedRows = this.eventLocalizedStore.update().set(
-                        title(event.getTitle()),
-                        description(event.getDescription()),
-                        locale(locale.getLanguage()))
+                                title(event.getTitle()),
+                                description(event.getDescription()),
+                                locale(locale.getLanguage()))
                         .where(eventId().eq(id)
-                        .and().locale().eq(locale.getLanguage())).execute();
+                                .and().locale().eq(locale.getLanguage()))
+                        .execute();
 
                 if (updatedRows == 0) {
                     updatedRows = createLocalized(id, locale, event);
@@ -277,13 +279,14 @@ public class EventService {
 
     /**
      * List list.
+     *
      * @param categories the categories
-     * @param userName the username
-     * @param locale   the locale
+     * @param userName   the username
+     * @param locale     the locale
      * @return the list
      */
     public List<Event> list(final String userName,
-                               final Locale locale,
+                            final Locale locale,
                             final List<String> categories) throws SQLException {
         EventStore.SelectStatement.SelectQuery selectQuery;
         if (locale == null) {
@@ -307,13 +310,13 @@ public class EventService {
                     .param(locale(locale.getLanguage()));
         }
 
-        for (String category: categories) {
+        for (String category : categories) {
             selectQuery.param(EventCategoryStore.categoryId(category));
         }
 
         return selectQuery.list()
                 .stream()
-                .map(event ->  this.mask(userName, event))
+                .map(event -> this.mask(userName, event))
                 .toList();
     }
 
@@ -321,7 +324,7 @@ public class EventService {
      * Delete boolean.
      *
      * @param userName the username
-     * @param eventId       the eventId
+     * @param eventId  the eventId
      * @return the boolean
      */
     public boolean delete(final String userName, final UUID eventId)
@@ -329,7 +332,7 @@ public class EventService {
 
         Optional<Event> eventOptional = this.read(userName, eventId, null);
         if (eventOptional.isPresent()
-        && eventOptional.get().getCreatedBy().equals(userName)) {
+                && eventOptional.get().getCreatedBy().equals(userName)) {
             this.eventLearnerStore
                     .delete(EventLearnerStore.eventId().eq(eventId))
                     .execute();
@@ -347,6 +350,19 @@ public class EventService {
         } else {
             throw new IllegalArgumentException("Event not found");
         }
+    }
+
+    /**
+     * is the Registered for the given event.
+     *
+     * @param userName the username
+     * @param eventId  the eventId
+     * @return the boolean
+     */
+    public boolean isRegistered(final String userName,
+                                final UUID eventId)
+            throws SQLException {
+        return this.eventLearnerStore.exists(eventId, userName);
     }
 
     /**

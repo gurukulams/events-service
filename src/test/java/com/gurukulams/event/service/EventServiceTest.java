@@ -202,8 +202,11 @@ class EventServiceTest {
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
             eventService.register(USERNAME_2, UUID.randomUUID());
         });
+        Assertions.assertFalse(eventService.isRegistered(USERNAME_2, event.getId()));
 
         Assertions.assertTrue(eventService.register(USERNAME_2, event.getId()));
+
+        Assertions.assertTrue(eventService.isRegistered(USERNAME_2, event.getId()));
 
         // registering again ? - Invalid
         Assertions.assertThrows(SQLException.class, () -> {
