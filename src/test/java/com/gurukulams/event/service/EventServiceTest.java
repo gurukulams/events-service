@@ -215,6 +215,31 @@ class EventServiceTest {
     }
 
     @Test
+    void join() throws SQLException {
+
+        final Event event = eventService.create(categories, tags, USERNAME_1, null,
+                anEvent());
+        // Without Registration ? - Invalid
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.join(USERNAME_2, event.getId());
+        });
+
+        // Without Event ? - Invalid
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.join(USERNAME_2, UUID.randomUUID());
+        });
+
+        // Owner Joining
+        Assertions.assertNotNull(eventService.join(USERNAME_1, event.getId()));
+
+        eventService.register(USERNAME_2, event.getId());
+
+        // Participant Joining
+        Assertions.assertNotNull(eventService.join(USERNAME_2, event.getId()));
+
+    }
+
+    @Test
     void delete() throws SQLException {
 
         final Event event = eventService.create(categories,tags, USERNAME_1, null,

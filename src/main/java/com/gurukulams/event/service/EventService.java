@@ -390,6 +390,26 @@ public class EventService {
     }
 
     /**
+     * join an Event (only if owner or registered user).
+     *
+     * @param userName the username
+     * @param eventId       the eventId
+     * @return the boolean
+     */
+    public String join(final String userName, final UUID eventId)
+            throws SQLException {
+        Optional<Event> eventOptional = this.read(userName, eventId, null);
+        if (eventOptional.isPresent()) {
+            if (eventOptional.get().getCreatedBy().equals(userName)) {
+                return eventOptional.get().getMeetingUrl();
+            } else if (isRegistered(userName, eventId)) {
+                return eventStore.select(eventId).get().getMeetingUrl();
+            }
+        }
+        throw new IllegalArgumentException("Event not found");
+    }
+
+    /**
      * Cleaning up all event.
      */
     public void delete() throws SQLException {
