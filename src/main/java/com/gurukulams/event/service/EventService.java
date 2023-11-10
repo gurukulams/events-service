@@ -5,9 +5,11 @@ import com.gurukulams.event.model.Event;
 import com.gurukulams.event.model.EventCategory;
 import com.gurukulams.event.model.EventLearner;
 import com.gurukulams.event.model.EventLocalized;
+import com.gurukulams.event.model.EventMeeting;
 import com.gurukulams.event.store.EventCategoryStore;
 import com.gurukulams.event.store.EventLearnerStore;
 import com.gurukulams.event.store.EventLocalizedStore;
+import com.gurukulams.event.store.EventMeetingStore;
 import com.gurukulams.event.store.EventStore;
 import com.gurukulams.event.store.EventTagStore;
 import jakarta.validation.ConstraintViolation;
@@ -27,6 +29,7 @@ import static com.gurukulams.event.store.EventLocalizedStore.locale;
 import static com.gurukulams.event.store.EventLocalizedStore.eventId;
 
 import java.lang.annotation.ElementType;
+import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -38,8 +41,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -59,7 +60,7 @@ public class EventService {
                 case when cl.locale = ?
                     then cl.description
                     else c.description
-                end as description,meeting_url,event_date,
+                end as description,event_date,
                 created_at, created_by, modified_at, modified_by
             from events c
             left join events_localized cl on c.id = cl.event_id
@@ -98,6 +99,11 @@ public class EventService {
     private final EventLearnerStore eventLearnerStore;
 
     /**
+     * Event Meeting Store.
+     */
+    private final EventMeetingStore eventMeetingStore;
+
+    /**
      * Bean Validator.
      */
     private final Validator validator;
@@ -106,7 +112,7 @@ public class EventService {
     /**
      * Builds a new Event service.
      *
-     * @param eventManager database manager.
+     * @param eventManager      database manager.
      * @param theValidator
      */
     public EventService(final EventManager eventManager,
@@ -120,6 +126,8 @@ public class EventService {
                 eventManager.getEventTagStore();
         this.eventLearnerStore =
                 eventManager.getEventLearnerStore();
+        this.eventMeetingStore =
+                eventManager.getEventMeetingStore();
         this.validator = theValidator;
     }
 
@@ -199,7 +207,7 @@ public class EventService {
                                 final UUID id,
                                 final Locale locale)
             throws SQLException {
-        Optional<Event> optionalEvent = (locale == null)
+        return (locale == null)
                 ? this.eventStore.select(id)
                 : eventStore.select()
                 .sql(READ_QUERY + " and c.id = ?")
@@ -208,10 +216,6 @@ public class EventService {
                 .param(locale(locale.getLanguage()))
                 .param(id(id))
                 .optional();
-        if (optionalEvent.isPresent()) {
-            return Optional.of(mask(userName, optionalEvent.get()));
-        }
-        return optionalEvent;
     }
 
     /**
@@ -292,7 +296,7 @@ public class EventService {
         if (locale == null) {
             selectQuery = eventStore
                     .select()
-                    .sql("SELECT id,title,description,meeting_url,event_date,"
+                    .sql("SELECT id,title,description,event_date,"
                             + "created_at,created_by,modified_at,modified_by"
                             + " FROM events WHERE "
                             + " id IN ("
@@ -314,10 +318,7 @@ public class EventService {
             selectQuery.param(EventCategoryStore.categoryId(category));
         }
 
-        return selectQuery.list()
-                .stream()
-                .map(event -> this.mask(userName, event))
-                .toList();
+        return selectQuery.list();
     }
 
     /**
@@ -333,6 +334,9 @@ public class EventService {
         Optional<Event> eventOptional = this.read(userName, eventId, null);
         if (eventOptional.isPresent()
                 && eventOptional.get().getCreatedBy().equals(userName)) {
+            this.eventMeetingStore
+                    .delete(EventMeetingStore.eventId().eq(eventId))
+                    .execute();
             this.eventLearnerStore
                     .delete(EventLearnerStore.eventId().eq(eventId))
                     .execute();
@@ -347,6 +351,34 @@ public class EventService {
                     .execute();
             return this.eventStore
                     .delete(eventId) == 1;
+        } else {
+            throw new IllegalArgumentException("Event not found");
+        }
+    }
+
+    /**
+     * Start for an Event.
+     *
+     * @param userName the username
+     * @param eventId       the eventId
+     * @param url
+     * @return the boolean
+     */
+    public boolean start(final String userName,
+                         final UUID eventId,
+                         final URL url)
+            throws SQLException {
+        Optional<Event> eventOptional = this.read(userName, eventId, null);
+        if (url != null
+            && eventOptional.isPresent()
+                && eventOptional.get().getCreatedBy().equals(userName)) {
+            EventMeeting meeting = new EventMeeting();
+            meeting.setEventId(eventId);
+            meeting.setMeetingUrl(url.toString());
+            return this.eventMeetingStore
+                    .insert()
+                    .values(meeting)
+                    .execute() == 1;
         } else {
             throw new IllegalArgumentException("Event not found");
         }
@@ -398,12 +430,16 @@ public class EventService {
      */
     public String join(final String userName, final UUID eventId)
             throws SQLException {
-        Optional<Event> eventOptional = this.read(userName, eventId, null);
+        Optional<Event> eventOptional
+                = this.read(userName, eventId, null);
         if (eventOptional.isPresent()) {
-            if (eventOptional.get().getCreatedBy().equals(userName)) {
-                return eventOptional.get().getMeetingUrl();
-            } else if (isRegistered(userName, eventId)) {
-                return eventStore.select(eventId).get().getMeetingUrl();
+            Optional<EventMeeting> meeting
+                    = this.eventMeetingStore.select(eventId);
+            if (meeting.isPresent()) {
+                if (eventOptional.get().getCreatedBy().equals(userName)
+                        || isRegistered(userName, eventId)) {
+                    return meeting.get().getMeetingUrl();
+                }
             }
         }
         throw new IllegalArgumentException("Event not found");
@@ -413,6 +449,9 @@ public class EventService {
      * Cleaning up all event.
      */
     public void delete() throws SQLException {
+        this.eventMeetingStore
+                .delete()
+                .execute();
         this.eventLearnerStore
                 .delete()
                 .execute();
@@ -469,8 +508,7 @@ public class EventService {
                 + category.size();
     }
 
-    private Set<ConstraintViolation<Event>>
-    isValidEvent(final Event event) {
+    private Set<ConstraintViolation<Event>> isValidEvent(final Event event) {
         Set<ConstraintViolation<Event>> violations =
                 new HashSet<>(validator.validate(event));
         if (violations.isEmpty()) {
@@ -482,26 +520,10 @@ public class EventService {
                 violations.add(getConstraintViolation(event,
                         "Event Can be created before "
                                 + MAX_DAYS_IN_ADVANCE + " in advance"));
-            } else if (!isValidURL(event.getMeetingUrl())) {
-                violations.add(getConstraintViolation(event,
-                        "Event url should be valid"));
             }
         }
 
         return violations;
-    }
-
-    /**
-     * Mask Event for non owners.
-     * @param userName
-     * @param event
-     * @return makedEvent
-     */
-    private Event mask(final String userName, final Event event) {
-        if (!userName.equals(event.getCreatedBy())) {
-            event.setMeetingUrl(null);
-        }
-        return event;
     }
 
     private static ConstraintViolation<Event> getConstraintViolation(
@@ -525,32 +547,6 @@ public class EventService {
                 event, leafBeanInstance,
                 cValue, propertyPath,
                 constraintDescriptor, elementType);
-    }
-
-    /**
-     * Isa Valid Url.
-     * @param url
-     * @return flag
-     */
-    private boolean isValidURL(final String url) {
-        if (url == null) {
-            return false;
-        }
-        // Compile the ReGex
-        Pattern p = Pattern.compile("((http|https)://)(www.)?"
-                + "[a-zA-Z0-9@:%._\\+~#?&//=]"
-                + "{2,256}\\.[a-z]"
-                + "{2,6}\\b([-a-zA-Z0-9@:%"
-                + "._\\+~#?&//=]*)");
-
-        // Find match between given string
-        // and regular expression
-        // using Pattern.matcher()
-        Matcher m = p.matcher(url);
-
-        // Return if the string
-        // matched the ReGex
-        return m.matches();
     }
 
 }

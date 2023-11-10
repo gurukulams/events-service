@@ -17,6 +17,8 @@ import static com.gurukulams.event.store.EventStore.eventDate;
 import static com.gurukulams.event.store.EventStore.id;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -85,18 +87,7 @@ class EventServiceTest {
             eventService.create(categories, tags, USERNAME_1
                     , null, newevent);
         });
-        // Not Valid URL ? - Not valid
-        newevent.setEventDate(LocalDateTime.now().plusDays(19L));
-        newevent.setMeetingUrl("Invalid Url");
-        Assertions.assertThrows(ConstraintViolationException.class, () -> {
-            eventService.create(categories, tags, USERNAME_1
-                    , null, newevent);
-        });
-        newevent.setMeetingUrl(null);
-        Assertions.assertThrows(ConstraintViolationException.class, () -> {
-            eventService.create(categories, tags, USERNAME_1
-                    , null, newevent);
-        });
+
 
     }
 
@@ -121,9 +112,6 @@ class EventServiceTest {
                 null, anEvent());
         Assertions.assertTrue(eventService.read(USERNAME_1, event.getId(), null).isPresent(),
                 "Created Event");
-
-        Assertions.assertNull(eventService.read(USERNAME_2, event.getId(), null).get().getMeetingUrl(),
-                "Masked Event");
     }
 
     @Test
@@ -215,7 +203,41 @@ class EventServiceTest {
     }
 
     @Test
-    void join() throws SQLException {
+    void start() throws SQLException, MalformedURLException {
+
+        final Event event = eventService.create(categories, tags, USERNAME_1, null,
+                anEvent());
+
+        // Start with Non Owner.
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.start(USERNAME_2, event.getId(),
+                    new URL("https://github.com/techatpark"));
+        });
+
+        // Start with Null URL.
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.start(USERNAME_1, event.getId(),
+                    null);
+        });
+
+        // Start with Invalid ID.
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.start(USERNAME_1, UUID.randomUUID(),
+                    new URL("https://github.com/techatpark"));
+        });
+
+        Assertions.assertTrue(eventService.start(USERNAME_1, event.getId(),
+                new URL("https://github.com/techatpark")));
+
+        // Double Start ?
+        Assertions.assertThrows(SQLException.class, () -> {
+        eventService.start(USERNAME_1, event.getId(),
+                new URL("https://github.com/techatpark"));
+        });
+    }
+
+    @Test
+    void join() throws SQLException, MalformedURLException {
 
         final Event event = eventService.create(categories, tags, USERNAME_1, null,
                 anEvent());
@@ -229,8 +251,16 @@ class EventServiceTest {
             eventService.join(USERNAME_2, UUID.randomUUID());
         });
 
-        // Owner Joining
+        // Owner Joining Before Start
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            eventService.join(USERNAME_1, event.getId());
+        });
+
+        eventService.start(USERNAME_1, event.getId(),
+                new URL("https://github.com/techatpark"));
+        // Owner Joining After Start
         Assertions.assertNotNull(eventService.join(USERNAME_1, event.getId()));
+
 
         eventService.register(USERNAME_2, event.getId());
 
@@ -268,9 +298,7 @@ class EventServiceTest {
                 newEvent);
         List<Event> listofEvents = eventService.list(USERNAME_1, null, categories);
         Assertions.assertEquals(2, listofEvents.size());
-        // Check Masking
-        listofEvents = eventService.list(USERNAME_2, null, categories);
-        Assertions.assertNull(listofEvents.get(0).getMeetingUrl());
+
 
         // Check it ignores past events
 
@@ -310,8 +338,6 @@ class EventServiceTest {
         event.setId(UUID.randomUUID());
         event.setTitle("HariEvent");
         event.setDescription("HariDescription");
-        event.setMeetingUrl("https://www.geeksforgeeks.org/"
-                + "check-if-an-url-is-valid-or-not-using-regular-expression/");
         event.setEventDate(LocalDateTime.now().plusDays(2L));
         return event;
     }
