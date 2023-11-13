@@ -19,14 +19,14 @@ import jakarta.validation.Validator;
 import jakarta.validation.metadata.ConstraintDescriptor;
 import org.hibernate.validator.internal.engine.ConstraintViolationImpl;
 
-import static com.gurukulams.event.store.EventStore.id;
-import static com.gurukulams.event.store.EventStore.title;
-import static com.gurukulams.event.store.EventStore.description;
-import static com.gurukulams.event.store.EventStore.eventDate;
-import static com.gurukulams.event.store.EventStore.modifiedBy;
-
 import static com.gurukulams.event.store.EventLocalizedStore.locale;
 import static com.gurukulams.event.store.EventLocalizedStore.eventId;
+import static com.gurukulams.event.store.EventStore.id;
+import static com.gurukulams.event.store.EventStore.createdBy;
+import static com.gurukulams.event.store.EventStore.eventDate;
+import static com.gurukulams.event.store.EventStore.description;
+import static com.gurukulams.event.store.EventStore.title;
+import static com.gurukulams.event.store.EventStore.modifiedBy;
 
 import java.lang.annotation.ElementType;
 import java.net.URL;
@@ -67,10 +67,28 @@ public class EventService {
             where cl.locale is null
                 or cl.locale = ?
             """;
+
+    /**
+     * Locale Specific List Query.
+     */
+    private static final String LIST_QUERY = READ_QUERY
+                                                + " and event_date > now()";
+
     /**
      * Even Advance Creation Days.
      */
     private static final int MAX_DAYS_IN_ADVANCE = 20;
+
+    /**
+     * Even Advance Creation Days.
+     */
+    private static final int MAX_MINUTES_IN_ADVANCE_TO_START = 10;
+    /**
+     * GET REGISTRED USERS.
+     */
+    private static final String LEARNER_WHERE_USER_HANDLE
+            = "select event_id from events_learner where user_handle = ?";
+
     /**
      * eventStore.
      */
@@ -282,7 +300,45 @@ public class EventService {
     }
 
     /**
-     * List list.
+     * Lists EVents of an User.
+     * @param userName
+     * @param locale
+     * @return the list
+     */
+    public List<Event> list(final String userName,
+                            final Locale locale) throws SQLException {
+        EventStore.SelectStatement.SelectQuery selectQuery;
+
+        if (locale == null) {
+            selectQuery = eventStore
+                .select()
+                .sql("SELECT id,title,description,event_date,"
+                    + "created_at,created_by,modified_at,modified_by"
+                    + " FROM events WHERE event_date > now()"
+                    + " AND ( created_by = ? OR id IN ("
+                    + LEARNER_WHERE_USER_HANDLE
+                    + "))")
+                .param(createdBy(userName))
+                .param(createdBy(userName));
+        } else {
+            selectQuery = eventStore
+                    .select()
+                    .sql(LIST_QUERY
+                            + " AND ( c.created_by = ? OR c.id IN ("
+                            + LEARNER_WHERE_USER_HANDLE
+                            + "))")
+                    .param(locale(locale.getLanguage()))
+                    .param(locale(locale.getLanguage()))
+                    .param(locale(locale.getLanguage()))
+                    .param(createdBy(userName))
+                    .param(createdBy(userName));
+        }
+
+        return selectQuery.list();
+    }
+
+    /**
+     * List events for categories.
      *
      * @param categories the categories
      * @param userName   the username
@@ -298,15 +354,15 @@ public class EventService {
                     .select()
                     .sql("SELECT id,title,description,event_date,"
                             + "created_at,created_by,modified_at,modified_by"
-                            + " FROM events WHERE "
-                            + " id IN ("
+                            + " FROM events WHERE event_date > now()"
+                            + " AND id IN ("
                             + getCategoryFilter(categories)
-                            + ") AND event_date > now()");
+                            + ")");
         } else {
             selectQuery = eventStore
                     .select()
-                    .sql(READ_QUERY
-                            + " and event_date > now() and c.id IN ("
+                    .sql(LIST_QUERY
+                            + " and c.id IN ("
                             + getCategoryFilter(categories)
                             + ")")
                     .param(locale(locale.getLanguage()))
@@ -372,13 +428,24 @@ public class EventService {
         if (url != null
             && eventOptional.isPresent()
                 && eventOptional.get().getCreatedBy().equals(userName)) {
-            EventMeeting meeting = new EventMeeting();
-            meeting.setEventId(eventId);
-            meeting.setMeetingUrl(url.toString());
-            return this.eventMeetingStore
-                    .insert()
-                    .values(meeting)
-                    .execute() == 1;
+            LocalDateTime eventDateTime = eventOptional.get().getEventDate();
+            LocalDateTime start = LocalDateTime.now()
+                    .minusMinutes(MAX_MINUTES_IN_ADVANCE_TO_START);
+            LocalDateTime thresold = LocalDateTime.now()
+                    .plusMinutes(MAX_MINUTES_IN_ADVANCE_TO_START);
+
+            if (eventDateTime
+                    .isAfter(start) && eventDateTime.isBefore(thresold)) {
+                EventMeeting meeting = new EventMeeting();
+                meeting.setEventId(eventId);
+                meeting.setMeetingUrl(url.toString());
+                return this.eventMeetingStore
+                        .insert()
+                        .values(meeting)
+                        .execute() == 1;
+            } else {
+                throw new IllegalArgumentException("Event not ready to start");
+            }
         } else {
             throw new IllegalArgumentException("Event not found");
         }

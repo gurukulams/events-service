@@ -71,7 +71,7 @@ class EventServiceTest {
 
 
     @Test
-    void creatInvalid() throws SQLException {
+    void createInvalid() throws SQLException {
         Event newevent = anEvent();
 
         // Past Event Days ? - Not valid
@@ -205,8 +205,10 @@ class EventServiceTest {
     @Test
     void start() throws SQLException, MalformedURLException {
 
+        final Event newEvent = anEvent();
+
         final Event event = eventService.create(categories, tags, USERNAME_1, null,
-                anEvent());
+                newEvent);
 
         // Start with Non Owner.
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
@@ -226,6 +228,14 @@ class EventServiceTest {
                     new URL("https://github.com/techatpark"));
         });
 
+        // Start Event Too Early ?.
+        Assertions.assertThrows(IllegalArgumentException.class, () -> {
+                    eventService.start(USERNAME_1, event.getId(),
+                            new URL("https://github.com/techatpark"));
+                });
+
+        event.setEventDate(LocalDateTime.now().plusMinutes(4));
+        eventService.update(event.getId(),USERNAME_1,null, event);
         Assertions.assertTrue(eventService.start(USERNAME_1, event.getId(),
                 new URL("https://github.com/techatpark")));
 
@@ -256,11 +266,14 @@ class EventServiceTest {
             eventService.join(USERNAME_1, event.getId());
         });
 
+        eventStore.update()
+                .set(eventDate(LocalDateTime.now().minusMinutes(4)))
+                .where(id().eq(event.getId()))
+                .execute();
         eventService.start(USERNAME_1, event.getId(),
                 new URL("https://github.com/techatpark"));
         // Owner Joining After Start
         Assertions.assertNotNull(eventService.join(USERNAME_1, event.getId()));
-
 
         eventService.register(USERNAME_2, event.getId());
 
@@ -286,6 +299,33 @@ class EventServiceTest {
 
         eventService.delete(USERNAME_1, event.getId());
         Assertions.assertFalse(eventService.read(USERNAME_1, event.getId(), null).isPresent(), "Deleted Event");
+    }
+
+
+    @Test
+    void listUserEvents() throws SQLException {
+        listUserEvents(null);
+        cleanUp();
+        listUserEvents(Locale.GERMAN);
+    }
+
+    void listUserEvents(Locale locale) throws SQLException {
+        final Event event = eventService.create(categories,tags, USERNAME_1, locale,
+                anEvent());
+        Event newEvent = anEvent();
+        eventService.create(categories,tags, USERNAME_1, locale,
+                newEvent);
+        List<Event> events = eventService.list(USERNAME_1, locale);
+        Assertions.assertEquals(2,  events.size());
+
+        Assertions.assertEquals(0, eventService.list(USERNAME_2, locale).size());
+        eventService.register(USERNAME_2, events.get(0).getId());
+        Assertions.assertEquals(1, eventService.list(USERNAME_2, locale).size());
+        eventService.create(categories,tags, USERNAME_2, locale,
+                anEvent());
+        Assertions.assertEquals(2, eventService.list(USERNAME_2, locale).size());
+        eventService.register(USERNAME_2, events.get(1).getId());
+        Assertions.assertEquals(3, eventService.list(USERNAME_2, locale).size());
     }
 
     @Test
