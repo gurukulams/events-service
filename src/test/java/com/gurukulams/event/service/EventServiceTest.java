@@ -41,8 +41,8 @@ class EventServiceTest {
     EventServiceTest() {
         ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory();
         Validator validator = validatorFactory.getValidator();
-        this.eventService = new EventService(TestUtil.eventManager(), validator);
-        this.eventStore = TestUtil.eventManager().getEventStore();
+        this.eventService = new EventService(TestUtil.dataManager(), validator);
+        this.eventStore = TestUtil.dataManager().getEventStore();
         categories = List.of("c1", "c2");
         tags = List.of("t1", "t2");
     }
@@ -75,17 +75,17 @@ class EventServiceTest {
         Event newevent = anEvent();
 
         // Past Event Days ? - Not valid
-        newevent.setEventDate(LocalDateTime.now().minusDays(2L));
+
         Assertions.assertThrows(ConstraintViolationException.class, () -> {
             eventService.create(categories, tags, USERNAME_1
-                    , null, newevent);
+                    , null, newevent.withEventDate(LocalDateTime.now().minusDays(2L)));
         });
 
         // Beyond 20 Days ? - Not valid
-        newevent.setEventDate(LocalDateTime.now().plusDays(21L));
+
         Assertions.assertThrows(ConstraintViolationException.class, () -> {
             eventService.create(categories, tags, USERNAME_1
-                    , null, newevent);
+                    , null, newevent.withEventDate(LocalDateTime.now().plusDays(21L)));
         });
 
 
@@ -95,44 +95,42 @@ class EventServiceTest {
     void create() throws SQLException {
         final Event event = eventService.create(categories,tags, USERNAME_1
                 , null, anEvent());
-        Assertions.assertTrue(eventService.read(USERNAME_1, event.getId(), null).isPresent(), "Created Event");
+        Assertions.assertTrue(eventService.read(USERNAME_1, event.id(), null).isPresent(), "Created Event");
     }
 
     @Test
     void createLocalized() throws SQLException {
         final Event event = eventService.create(categories,tags, USERNAME_1
                 , Locale.GERMAN, anEvent());
-        Assertions.assertTrue(eventService.read(USERNAME_1, event.getId(), Locale.GERMAN).isPresent(), "Created Localized Event");
-        Assertions.assertTrue(eventService.read(USERNAME_1, event.getId(), null).isPresent(), "Created Event");
+        Assertions.assertTrue(eventService.read(USERNAME_1, event.id(), Locale.GERMAN).isPresent(), "Created Localized Event");
+        Assertions.assertTrue(eventService.read(USERNAME_1, event.id(), null).isPresent(), "Created Event");
     }
 
     @Test
     void read() throws SQLException {
         final Event event = eventService.create(categories,tags, USERNAME_1,
                 null, anEvent());
-        Assertions.assertTrue(eventService.read(USERNAME_1, event.getId(), null).isPresent(),
+        Assertions.assertTrue(eventService.read(USERNAME_1, event.id(), null).isPresent(),
                 "Created Event");
     }
 
     @Test
     void update() throws SQLException {
 
-        final Event event = eventService.create(categories,tags, USERNAME_1,
-                null, anEvent());
-
         Event updatedEvent ;
 
         LocalDateTime eventDate = LocalDateTime.now().plusDays(4L).truncatedTo(ChronoUnit.SECONDS);
 
-        event.setTitle("MyTitle2");
-        event.setDescription("MyDescription2");
-        event.setEventDate(eventDate);
+        final Event event = eventService.create(categories,tags, USERNAME_1,
+                null, anEvent()).withTitle("MyTitle2")
+                .withDescription("MyDescription2")
+                .withEventDate(eventDate);
         updatedEvent = eventService
-                .update(event.getId(), USERNAME_1, null, event);
-        Assertions.assertEquals("MyTitle2", updatedEvent.getTitle(), "Updated");
+                .update(event.id(), USERNAME_1, null, event);
+        Assertions.assertEquals("MyTitle2", updatedEvent.title(), "Updated");
 
-        Assertions.assertEquals("MyDescription2", updatedEvent.getDescription(), "Updated");
-        Assertions.assertEquals(eventDate, updatedEvent.getEventDate(), "Updated");
+        Assertions.assertEquals("MyDescription2", updatedEvent.description(), "Updated");
+        Assertions.assertEquals(eventDate, updatedEvent.eventDate(), "Updated");
 
         // Update With Another ID ? - Not valid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
@@ -142,14 +140,14 @@ class EventServiceTest {
         // Update By Another User ? - Not valid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
             eventService
-                    .update(event.getId(), USERNAME_2, null, event);
+                    .update(event.id(), USERNAME_2, null, event);
         });
 
         // Past Event Days ? - Not valid
-        event.setEventDate(LocalDateTime.now().minusDays(2L));
+
         Assertions.assertThrows(ConstraintViolationException.class, () -> {
             eventService
-                    .update(event.getId(), USERNAME_2, null, event);
+                    .update(event.id(), USERNAME_2, null, event.withEventDate(LocalDateTime.now().minusDays(2L)));
         });
 
     }
@@ -159,14 +157,13 @@ class EventServiceTest {
 
         final Event event = eventService.create(categories,tags, USERNAME_1,
                 null, anEvent());
-        Event newEvent = anEvent();
-        newEvent.setId(event.getId());
-        newEvent.setTitle("HansiEvent");
+        Event newEvent = anEvent().withId(event.id())
+        .withTitle("HansiEvent");
         Event updatedEvent = eventService
-                .update(event.getId(), USERNAME_1, Locale.GERMAN, newEvent);
+                .update(event.id(), USERNAME_1, Locale.GERMAN, newEvent);
 
-        Assertions.assertEquals("HansiEvent", eventService.read(USERNAME_1, event.getId(), Locale.GERMAN).get().getTitle(), "Updated");
-        Assertions.assertNotEquals("HansiEvent", eventService.read(USERNAME_1, event.getId(), null).get().getTitle(), "Updated");
+        Assertions.assertEquals("HansiEvent", eventService.read(USERNAME_1, event.id(), Locale.GERMAN).get().title(), "Updated");
+        Assertions.assertNotEquals("HansiEvent", eventService.read(USERNAME_1, event.id(), null).get().title(), "Updated");
 
 
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
@@ -183,22 +180,22 @@ class EventServiceTest {
 
         // owner registering for his own event ? - Invalid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.register(USERNAME_1, event.getId());
+            eventService.register(USERNAME_1, event.id());
         });
 
         // registering for invalid event ? - Invalid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
             eventService.register(USERNAME_2, UUID.randomUUID());
         });
-        Assertions.assertFalse(eventService.isRegistered(USERNAME_2, event.getId()));
+        Assertions.assertFalse(eventService.isRegistered(USERNAME_2, event.id()));
 
-        Assertions.assertTrue(eventService.register(USERNAME_2, event.getId()));
+        Assertions.assertTrue(eventService.register(USERNAME_2, event.id()));
 
-        Assertions.assertTrue(eventService.isRegistered(USERNAME_2, event.getId()));
+        Assertions.assertTrue(eventService.isRegistered(USERNAME_2, event.id()));
 
         // registering again ? - Invalid
         Assertions.assertThrows(SQLException.class, () -> {
-            eventService.register(USERNAME_2, event.getId());
+            eventService.register(USERNAME_2, event.id());
         });
     }
 
@@ -212,13 +209,13 @@ class EventServiceTest {
 
         // Start with Non Owner.
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.start(USERNAME_2, event.getId(),
+            eventService.start(USERNAME_2, event.id(),
                     new URL("https://github.com/techatpark"));
         });
 
         // Start with Null URL.
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.start(USERNAME_1, event.getId(),
+            eventService.start(USERNAME_1, event.id(),
                     null);
         });
 
@@ -230,18 +227,18 @@ class EventServiceTest {
 
         // Start Event Too Early ?.
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-                    eventService.start(USERNAME_1, event.getId(),
+                    eventService.start(USERNAME_1, event.id(),
                             new URL("https://github.com/techatpark"));
                 });
 
-        event.setEventDate(LocalDateTime.now().plusMinutes(4));
-        eventService.update(event.getId(),USERNAME_1,null, event);
-        Assertions.assertTrue(eventService.start(USERNAME_1, event.getId(),
+
+        eventService.update(event.id(),USERNAME_1,null,  event.withEventDate(LocalDateTime.now().plusMinutes(4)));
+        Assertions.assertTrue(eventService.start(USERNAME_1, event.id(),
                 new URL("https://github.com/techatpark")));
 
         // Double Start ?
         Assertions.assertThrows(SQLException.class, () -> {
-        eventService.start(USERNAME_1, event.getId(),
+        eventService.start(USERNAME_1, event.id(),
                 new URL("https://github.com/techatpark"));
         });
     }
@@ -253,7 +250,7 @@ class EventServiceTest {
                 anEvent());
         // Without Registration ? - Invalid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.join(USERNAME_2, event.getId());
+            eventService.join(USERNAME_2, event.id());
         });
 
         // Without Event ? - Invalid
@@ -263,22 +260,22 @@ class EventServiceTest {
 
         // Owner Joining Before Start
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.join(USERNAME_1, event.getId());
+            eventService.join(USERNAME_1, event.id());
         });
 
         eventStore.update()
                 .set(eventDate(LocalDateTime.now().minusMinutes(4)))
-                .where(id().eq(event.getId()))
+                .where(id().eq(event.id()))
                 .execute();
-        eventService.start(USERNAME_1, event.getId(),
+        eventService.start(USERNAME_1, event.id(),
                 new URL("https://github.com/techatpark"));
         // Owner Joining After Start
-        Assertions.assertNotNull(eventService.join(USERNAME_1, event.getId()));
+        Assertions.assertNotNull(eventService.join(USERNAME_1, event.id()));
 
-        eventService.register(USERNAME_2, event.getId());
+        eventService.register(USERNAME_2, event.id());
 
         // Participant Joining
-        Assertions.assertNotNull(eventService.join(USERNAME_2, event.getId()));
+        Assertions.assertNotNull(eventService.join(USERNAME_2, event.id()));
 
     }
 
@@ -289,7 +286,7 @@ class EventServiceTest {
                 anEvent());
         // Not a owner ? - Invalid
         Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            eventService.delete(USERNAME_2, event.getId());
+            eventService.delete(USERNAME_2, event.id());
         });
 
         // Not existing event ? - Invalid
@@ -297,8 +294,8 @@ class EventServiceTest {
             eventService.delete(USERNAME_1, UUID.randomUUID());
         });
 
-        eventService.delete(USERNAME_1, event.getId());
-        Assertions.assertFalse(eventService.read(USERNAME_1, event.getId(), null).isPresent(), "Deleted Event");
+        eventService.delete(USERNAME_1, event.id());
+        Assertions.assertFalse(eventService.read(USERNAME_1, event.id(), null).isPresent(), "Deleted Event");
     }
 
 
@@ -319,12 +316,12 @@ class EventServiceTest {
         Assertions.assertEquals(2,  events.size());
 
         Assertions.assertEquals(0, eventService.list(USERNAME_2, locale).size());
-        eventService.register(USERNAME_2, events.get(0).getId());
+        eventService.register(USERNAME_2, events.get(0).id());
         Assertions.assertEquals(1, eventService.list(USERNAME_2, locale).size());
         eventService.create(categories,tags, USERNAME_2, locale,
                 anEvent());
         Assertions.assertEquals(2, eventService.list(USERNAME_2, locale).size());
-        eventService.register(USERNAME_2, events.get(1).getId());
+        eventService.register(USERNAME_2, events.get(1).id());
         Assertions.assertEquals(3, eventService.list(USERNAME_2, locale).size());
     }
 
@@ -344,7 +341,7 @@ class EventServiceTest {
 
         int updated = this.eventStore.update()
                 .set(eventDate(LocalDateTime.now().minusDays(5L)))
-                .where(id().eq(listofEvents.get(0).getId()))
+                .where(id().eq(listofEvents.get(0).id()))
                 .execute();
         listofEvents = eventService.list(USERNAME_2, null, categories);
         Assertions.assertEquals(1, listofEvents.size());
@@ -374,11 +371,14 @@ class EventServiceTest {
      * @return the practice
      */
     Event anEvent() {
-        Event event = new Event();
-        event.setId(UUID.randomUUID());
-        event.setTitle("HariEvent");
-        event.setDescription("HariDescription");
-        event.setEventDate(LocalDateTime.now().plusDays(2L));
+        Event event = new Event(UUID.randomUUID(),
+           "HariEvent",
+           "HariDescription",
+           LocalDateTime.now().plusDays(2L),
+        null,
+        null,
+        null,
+        null);
         return event;
     }
 }

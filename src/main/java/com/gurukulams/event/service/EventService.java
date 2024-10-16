@@ -1,6 +1,6 @@
 package com.gurukulams.event.service;
 
-import com.gurukulams.event.EventManager;
+import com.gurukulams.event.DataManager;
 import com.gurukulams.event.model.Event;
 import com.gurukulams.event.model.EventCategory;
 import com.gurukulams.event.model.EventLearner;
@@ -130,22 +130,22 @@ public class EventService {
     /**
      * Builds a new Event service.
      *
-     * @param eventManager      database manager.
+     * @param dataManager      database manager.
      * @param theValidator
      */
-    public EventService(final EventManager eventManager,
+    public EventService(final DataManager dataManager,
                         final Validator theValidator) {
-        this.eventStore = eventManager.getEventStore();
+        this.eventStore = dataManager.getEventStore();
         this.eventLocalizedStore
-                = eventManager.getEventLocalizedStore();
+                = dataManager.getEventLocalizedStore();
         this.eventCategoryStore =
-                eventManager.getEventCategoryStore();
+                dataManager.getEventCategoryStore();
         this.eventTagStore =
-                eventManager.getEventTagStore();
+                dataManager.getEventTagStore();
         this.eventLearnerStore =
-                eventManager.getEventLearnerStore();
+                dataManager.getEventLearnerStore();
         this.eventMeetingStore =
-                eventManager.getEventMeetingStore();
+                dataManager.getEventMeetingStore();
         this.validator = theValidator;
     }
 
@@ -174,14 +174,14 @@ public class EventService {
         }
 
         UUID id = UUID.randomUUID();
-        event.setId(id);
-        event.setCreatedAt(LocalDateTime.now());
-        event.setCreatedBy(userName);
-        event.setEventDate(event.getEventDate()
+      final Event toBeCreated = event.withId(id)
+        .withCreatedAt(LocalDateTime.now())
+        .withCreatedBy(userName)
+        .withEventDate(event.eventDate()
                 .truncatedTo(ChronoUnit.SECONDS));
-        this.eventStore.insert().values(event).execute();
+        this.eventStore.insert().values(toBeCreated).execute();
         if (locale != null) {
-            createLocalized(id, locale, event);
+            createLocalized(id, locale, toBeCreated);
         }
         for (String category : categories) {
             attachCategory(id, category);
@@ -203,11 +203,10 @@ public class EventService {
                                 final Locale locale,
                                 final Event event)
             throws SQLException {
-        EventLocalized localized = new EventLocalized();
-        localized.setEventId(eventId);
-        localized.setLocale(locale.getLanguage());
-        localized.setTitle(event.getTitle());
-        localized.setDescription(event.getDescription());
+        EventLocalized localized = new EventLocalized(eventId,
+                locale.getLanguage(),
+                event.title(),
+                event.description());
         return this.eventLocalizedStore.insert()
                 .values(localized)
                 .execute();
@@ -259,14 +258,14 @@ public class EventService {
 
         int updatedRows;
 
-        event.setEventDate(event.getEventDate()
+        event.withEventDate(event.eventDate()
                 .truncatedTo(ChronoUnit.SECONDS));
 
         if (locale == null) {
             updatedRows = this.eventStore.update()
-                    .set(title(event.getTitle()),
-                            description(event.getDescription()),
-                            eventDate(event.getEventDate()),
+                    .set(title(event.title()),
+                            description(event.description()),
+                            eventDate(event.eventDate()),
                             modifiedBy(userName))
                     .where(id().eq(id).and()
                             .createdBy().eq(userName)).execute();
@@ -279,8 +278,8 @@ public class EventService {
                     .execute();
             if (updatedRows != 0) {
                 updatedRows = this.eventLocalizedStore.update().set(
-                                title(event.getTitle()),
-                                description(event.getDescription()),
+                                title(event.title()),
+                                description(event.description()),
                                 locale(locale.getLanguage()))
                         .where(eventId().eq(id)
                                 .and().locale().eq(locale.getLanguage()))
@@ -389,7 +388,7 @@ public class EventService {
 
         Optional<Event> eventOptional = this.read(userName, eventId, null);
         if (eventOptional.isPresent()
-                && eventOptional.get().getCreatedBy().equals(userName)) {
+                && eventOptional.get().createdBy().equals(userName)) {
             this.eventMeetingStore
                     .delete(EventMeetingStore.eventId().eq(eventId))
                     .execute();
@@ -427,8 +426,8 @@ public class EventService {
         Optional<Event> eventOptional = this.read(userName, eventId, null);
         if (url != null
             && eventOptional.isPresent()
-                && eventOptional.get().getCreatedBy().equals(userName)) {
-            LocalDateTime eventDateTime = eventOptional.get().getEventDate();
+                && eventOptional.get().createdBy().equals(userName)) {
+            LocalDateTime eventDateTime = eventOptional.get().eventDate();
             LocalDateTime start = LocalDateTime.now()
                     .minusMinutes(MAX_MINUTES_IN_ADVANCE_TO_START);
             LocalDateTime thresold = LocalDateTime.now()
@@ -436,9 +435,8 @@ public class EventService {
 
             if (eventDateTime
                     .isAfter(start) && eventDateTime.isBefore(thresold)) {
-                EventMeeting meeting = new EventMeeting();
-                meeting.setEventId(eventId);
-                meeting.setMeetingUrl(url.toString());
+                EventMeeting meeting = new EventMeeting(eventId,
+                        url.toString());
                 return this.eventMeetingStore
                         .insert()
                         .values(meeting)
@@ -475,10 +473,9 @@ public class EventService {
             throws SQLException {
         Optional<Event> eventOptional = this.read(userName, eventId, null);
         if (eventOptional.isPresent()
-                && !eventOptional.get().getCreatedBy().equals(userName)) {
-            EventLearner eventLearner = new EventLearner();
-            eventLearner.setEventId(eventId);
-            eventLearner.setUserHandle(userName);
+                && !eventOptional.get().createdBy().equals(userName)) {
+            EventLearner eventLearner = new EventLearner(eventId,
+                    userName);
             return this.eventLearnerStore
                     .insert()
                     .values(eventLearner)
@@ -503,9 +500,9 @@ public class EventService {
             Optional<EventMeeting> meeting
                     = this.eventMeetingStore.select(eventId);
             if (meeting.isPresent()) {
-                if (eventOptional.get().getCreatedBy().equals(userName)
+                if (eventOptional.get().createdBy().equals(userName)
                         || isRegistered(userName, eventId)) {
-                    return meeting.get().getMeetingUrl();
+                    return meeting.get().meetingUrl();
                 }
             }
         }
@@ -547,10 +544,8 @@ public class EventService {
             throws SQLException {
         int noOfRowsInserted = 0;
 
-        EventCategory questionCategory = new EventCategory();
-        questionCategory.setEventId(id);
-        questionCategory.setCategoryId(category);
-
+        EventCategory questionCategory = new EventCategory(id,
+                category);
         noOfRowsInserted = this.eventCategoryStore
                 .insert()
                 .values(questionCategory)
@@ -581,8 +576,8 @@ public class EventService {
         if (violations.isEmpty()) {
             LocalDateTime now = LocalDateTime.now();
             // Event Can be created only till MAX_DAYS_IN_ADVANCE
-            if (event.getEventDate().isBefore(now)
-                    || event.getEventDate()
+            if (event.eventDate().isBefore(now)
+                    || event.eventDate()
                     .isAfter(now.plusDays(MAX_DAYS_IN_ADVANCE))) {
                 violations.add(getConstraintViolation(event,
                         "Event Can be created before "
