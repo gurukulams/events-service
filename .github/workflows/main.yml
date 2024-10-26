@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build the Infrastructure
-        run: docker-compose up -d
+        run: docker compose up -d
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
