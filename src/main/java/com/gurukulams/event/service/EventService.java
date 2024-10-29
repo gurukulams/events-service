@@ -19,6 +19,8 @@ import jakarta.validation.Validator;
 import jakarta.validation.metadata.ConstraintDescriptor;
 import org.hibernate.validator.internal.engine.ConstraintViolationImpl;
 
+import javax.sql.DataSource;
+
 import static com.gurukulams.event.store.EventLocalizedStore.locale;
 import static com.gurukulams.event.store.EventLocalizedStore.eventId;
 import static com.gurukulams.event.store.EventStore.id;
@@ -88,7 +90,10 @@ public class EventService {
      */
     private static final String LEARNER_WHERE_USER_HANDLE
             = "select event_id from events_learner where user_handle = ?";
-
+    /**
+     * Datasource for persistence.
+     */
+    private final DataSource dataSource;
     /**
      * eventStore.
      */
@@ -129,12 +134,14 @@ public class EventService {
 
     /**
      * Builds a new Event service.
-     *
+     * @param theDataSource
      * @param dataManager      database manager.
      * @param theValidator
      */
-    public EventService(final DataManager dataManager,
+    public EventService(final DataSource theDataSource,
+                        final DataManager dataManager,
                         final Validator theValidator) {
+        this.dataSource = theDataSource;
         this.eventStore = dataManager.getEventStore();
         this.eventLocalizedStore
                 = dataManager.getEventLocalizedStore();
@@ -179,7 +186,7 @@ public class EventService {
         .withCreatedBy(userName)
         .withEventDate(event.eventDate()
                 .truncatedTo(ChronoUnit.SECONDS));
-        this.eventStore.insert().values(toBeCreated).execute();
+        this.eventStore.insert().values(toBeCreated).execute(this.dataSource);
         if (locale != null) {
             createLocalized(id, locale, toBeCreated);
         }
@@ -209,7 +216,7 @@ public class EventService {
                 event.description());
         return this.eventLocalizedStore.insert()
                 .values(localized)
-                .execute();
+                .execute(this.dataSource);
     }
 
     /**
@@ -225,14 +232,14 @@ public class EventService {
                                 final Locale locale)
             throws SQLException {
         return (locale == null)
-                ? this.eventStore.select(id)
+                ? this.eventStore.select(this.dataSource, id)
                 : eventStore.select()
                 .sql(READ_QUERY + " and c.id = ?")
                 .param(locale(locale.getLanguage()))
                 .param(locale(locale.getLanguage()))
                 .param(locale(locale.getLanguage()))
                 .param(id(id))
-                .optional();
+                .optional(this.dataSource);
     }
 
     /**
@@ -268,14 +275,14 @@ public class EventService {
                             eventDate(event.eventDate()),
                             modifiedBy(userName))
                     .where(id().eq(id).and()
-                            .createdBy().eq(userName)).execute();
+                            .createdBy().eq(userName)).execute(this.dataSource);
         } else {
             updatedRows = this.eventStore.update()
                     .set(modifiedBy(userName))
                     .where(id().eq(id)
                             .and()
                             .createdBy().eq(userName))
-                    .execute();
+                    .execute(this.dataSource);
             if (updatedRows != 0) {
                 updatedRows = this.eventLocalizedStore.update().set(
                                 title(event.title()),
@@ -283,7 +290,7 @@ public class EventService {
                                 locale(locale.getLanguage()))
                         .where(eventId().eq(id)
                                 .and().locale().eq(locale.getLanguage()))
-                        .execute();
+                        .execute(this.dataSource);
 
                 if (updatedRows == 0) {
                     updatedRows = createLocalized(id, locale, event);
@@ -333,7 +340,7 @@ public class EventService {
                     .param(createdBy(userName));
         }
 
-        return selectQuery.list();
+        return selectQuery.list(this.dataSource);
     }
 
     /**
@@ -373,7 +380,7 @@ public class EventService {
             selectQuery.param(EventCategoryStore.categoryId(category));
         }
 
-        return selectQuery.list();
+        return selectQuery.list(this.dataSource);
     }
 
     /**
@@ -391,21 +398,21 @@ public class EventService {
                 && eventOptional.get().createdBy().equals(userName)) {
             this.eventMeetingStore
                     .delete(EventMeetingStore.eventId().eq(eventId))
-                    .execute();
+                    .execute(this.dataSource);
             this.eventLearnerStore
                     .delete(EventLearnerStore.eventId().eq(eventId))
-                    .execute();
+                    .execute(this.dataSource);
             this.eventCategoryStore
                     .delete(EventCategoryStore.eventId().eq(eventId))
-                    .execute();
+                    .execute(this.dataSource);
             this.eventTagStore
                     .delete(EventTagStore.eventId().eq(eventId))
-                    .execute();
+                    .execute(this.dataSource);
             this.eventLocalizedStore
                     .delete(eventId().eq(eventId))
-                    .execute();
+                    .execute(this.dataSource);
             return this.eventStore
-                    .delete(eventId) == 1;
+                    .delete(this.dataSource, eventId) == 1;
         } else {
             throw new IllegalArgumentException("Event not found");
         }
@@ -440,7 +447,7 @@ public class EventService {
                 return this.eventMeetingStore
                         .insert()
                         .values(meeting)
-                        .execute() == 1;
+                        .execute(this.dataSource) == 1;
             } else {
                 throw new IllegalArgumentException("Event not ready to start");
             }
@@ -459,7 +466,8 @@ public class EventService {
     public boolean isRegistered(final String userName,
                                 final UUID eventId)
             throws SQLException {
-        return this.eventLearnerStore.exists(eventId, userName);
+        return this.eventLearnerStore.exists(this.dataSource,
+                eventId, userName);
     }
 
     /**
@@ -479,7 +487,7 @@ public class EventService {
             return this.eventLearnerStore
                     .insert()
                     .values(eventLearner)
-                    .execute() == 1;
+                    .execute(this.dataSource) == 1;
         } else {
             throw new IllegalArgumentException("Event not found");
         }
@@ -498,7 +506,7 @@ public class EventService {
                 = this.read(userName, eventId, null);
         if (eventOptional.isPresent()) {
             Optional<EventMeeting> meeting
-                    = this.eventMeetingStore.select(eventId);
+                    = this.eventMeetingStore.select(this.dataSource, eventId);
             if (meeting.isPresent()) {
                 if (eventOptional.get().createdBy().equals(userName)
                         || isRegistered(userName, eventId)) {
@@ -515,22 +523,22 @@ public class EventService {
     public void delete() throws SQLException {
         this.eventMeetingStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
         this.eventLearnerStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
         this.eventCategoryStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
         this.eventTagStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
         this.eventLocalizedStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
         this.eventStore
                 .delete()
-                .execute();
+                .execute(this.dataSource);
     }
 
     /**
@@ -549,7 +557,7 @@ public class EventService {
         noOfRowsInserted = this.eventCategoryStore
                 .insert()
                 .values(questionCategory)
-                .execute();
+                .execute(this.dataSource);
 
         return noOfRowsInserted == 1;
     }

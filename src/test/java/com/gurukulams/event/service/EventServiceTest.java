@@ -13,8 +13,11 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
+
 import static com.gurukulams.event.store.EventStore.eventDate;
 import static com.gurukulams.event.store.EventStore.id;
+import static com.gurukulams.event.util.TestUtil.getDataSource;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -33,7 +36,10 @@ class EventServiceTest {
     private static final String USERNAME_1 = "hari";
     private static final String USERNAME_2 = "hari2";
     private final EventService eventService;
-
+    /**
+     * Datasource for persistence.
+     */
+    private final DataSource dataSource;
     private final EventStore eventStore;
     private final List<String> categories ;
     private final List<String> tags ;
@@ -41,7 +47,9 @@ class EventServiceTest {
     EventServiceTest() {
         ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory();
         Validator validator = validatorFactory.getValidator();
-        this.eventService = new EventService(TestUtil.dataManager(), validator);
+        this.dataSource = getDataSource();
+        this.eventService = new EventService(this.dataSource,
+                TestUtil.dataManager(), validator);
         this.eventStore = TestUtil.dataManager().getEventStore();
         categories = List.of("c1", "c2");
         tags = List.of("t1", "t2");
@@ -266,7 +274,7 @@ class EventServiceTest {
         eventStore.update()
                 .set(eventDate(LocalDateTime.now().minusMinutes(4)))
                 .where(id().eq(event.id()))
-                .execute();
+                .execute(this.dataSource);
         eventService.start(USERNAME_1, event.id(),
                 new URL("https://github.com/techatpark"));
         // Owner Joining After Start
@@ -342,7 +350,7 @@ class EventServiceTest {
         int updated = this.eventStore.update()
                 .set(eventDate(LocalDateTime.now().minusDays(5L)))
                 .where(id().eq(listofEvents.get(0).id()))
-                .execute();
+                .execute(this.dataSource);
         listofEvents = eventService.list(USERNAME_2, null, categories);
         Assertions.assertEquals(1, listofEvents.size());
 
