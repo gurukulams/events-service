@@ -8,20 +8,23 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up JDK
-      uses: actions/setup-java@v3
-      with:
-        java-version: '21'
-        distribution: 'temurin'
-    - name: Build the Infrastructure
-      run: docker compose up -d
-    - name: Quality Check
-      run: ./mvnw --quiet -s $GITHUB_WORKSPACE/src/main/res/.m2/settings.xml -B jacoco:prepare-agent install jacoco:report --file pom.xml
-      env:
-        USER_NAME: ${{ secrets.GH_PACKAGE_USER }}
-        ACCESS_TOKEN: ${{ secrets.GH_PACKAGE_TOKEN }}
+      - uses: actions/checkout@v4
+      - name: Build the Infrastructure
+        run: docker compose up -d
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+          server-id: github
+          settings-path: ${{ github.workspace }}
+      - name: Build the Infrastructure
+        run: docker compose up -d
+      - name: Quality Check
+        run: ./mvnw --quiet -s $GITHUB_WORKSPACE/src/main/res/.m2/settings.xml -B jacoco:prepare-agent install jacoco:report --file pom.xml
+        env:
+          USER_NAME: ${{ secrets.GH_PACKAGE_USER }}
+          ACCESS_TOKEN: ${{ secrets.GH_PACKAGE_TOKEN }}

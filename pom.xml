@@ -32,7 +32,7 @@
 		<repository>
 			<id>github</id>
 			<name>GitHub Packages</name>
-			<url>https://maven.pkg.github.com/gurukulams/gurukulams-event</url>
+			<url>https://maven.pkg.github.com/gurukulams/events-service</url>
 		</repository>
 	</distributionManagement>
 
