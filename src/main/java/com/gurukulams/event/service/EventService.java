@@ -313,7 +313,7 @@ public class EventService {
      */
     public List<Event> list(final String userName,
                             final Locale locale) throws SQLException {
-        EventStore.SelectStatement.SelectQuery selectQuery;
+        DataManager.SelectQuery selectQuery;
 
         if (locale == null) {
             selectQuery = eventStore
@@ -354,7 +354,7 @@ public class EventService {
     public List<Event> list(final String userName,
                             final Locale locale,
                             final List<String> categories) throws SQLException {
-        EventStore.SelectStatement.SelectQuery selectQuery;
+        DataManager.SelectQuery selectQuery;
         if (locale == null) {
             selectQuery = eventStore
                     .select()
@@ -397,19 +397,24 @@ public class EventService {
         if (eventOptional.isPresent()
                 && eventOptional.get().createdBy().equals(userName)) {
             this.eventMeetingStore
-                    .delete(EventMeetingStore.eventId().eq(eventId))
+                    .delete()
+                        .where(EventMeetingStore.eventId().eq(eventId))
                     .execute(this.dataSource);
             this.eventLearnerStore
-                    .delete(EventLearnerStore.eventId().eq(eventId))
+                    .delete()
+                        .where(EventLearnerStore.eventId().eq(eventId))
                     .execute(this.dataSource);
             this.eventCategoryStore
-                    .delete(EventCategoryStore.eventId().eq(eventId))
+                    .delete()
+                        .where(EventCategoryStore.eventId().eq(eventId))
                     .execute(this.dataSource);
             this.eventTagStore
-                    .delete(EventTagStore.eventId().eq(eventId))
+                    .delete()
+                        .where(EventTagStore.eventId().eq(eventId))
                     .execute(this.dataSource);
             this.eventLocalizedStore
-                    .delete(eventId().eq(eventId))
+                    .delete()
+                        .where(eventId().eq(eventId))
                     .execute(this.dataSource);
             return this.eventStore
                     .delete(this.dataSource, eventId) == 1;
