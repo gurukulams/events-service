@@ -126,7 +126,7 @@
 					<execution>
 						<phase>generate-sources</phase>
 						<goals>
-							<goal>generated-sources</goal>
+							<goal>generate</goal>
 						</goals>
 					</execution>
 				</executions>
